@@ -167,7 +167,7 @@ class LeetCodeScraper:
             total_pages = int(soup.find_all('button', class_="flex items-center justify-center px-3 h-8 rounded select-none focus:outline-none bg-fill-3 dark:bg-dark-fill-3 text-label-2 dark:text-dark-label-2 hover:bg-fill-2 dark:hover:bg-dark-fill-2")[-2].text)
             self.close_browser(browser)
 
-            for page in range(0, total_pages + 1):
+            for page in range(1, total_pages + 1):
                 logging.warning(f"Fetching Page : {page}")
                 page_url = f"{self.site_url}?page={page}"
                 self.fetch_page_data(page_url)
