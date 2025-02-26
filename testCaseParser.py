@@ -2,81 +2,65 @@ import re
 import ast
 
 def safe_literal_eval(node):
-    """
-    This function helps us evaluate valid Python datatypes dynamically.
+    """  evaluates valid Python datatypes dynamically. """
+    if not isinstance(node, str):
+        return True, node
 
-    :param node: node to evaluate
-    :return: Boolean stating the state
-    :return: evaluated node
-    """
+    node = node.replace('null', 'None')
     try:
-        evaluated = ast.literal_eval(node)
-        return True, evaluated
-    except:
+        return True, ast.literal_eval(node)
+    except (ValueError, SyntaxError):
         return False, node
 
-def parse_test_case(test_cases):
-    """
-    This function parses the test cases from string to a valid Python datatype.
+def replace_boolean_strings(input):
+    """ Replaces string representations of booleans from test cases"""
+    if isinstance(input, str) and ("true" in input.lower() or "false" in input.lower()):
+        value = re.sub(r'\btrue\b', 'True', input, flags=re.IGNORECASE)
+        value = re.sub(r'\bfalse\b', 'False', value, flags=re.IGNORECASE)
+        value = value.replace('null','None')
+        return eval(value)
 
-    :param test_cases: test cases to parse
-    :return: Parsed test cases
-    """
-    test_cases = ast.literal_eval(test_cases)
-    test_cases = [n.strip() for n in test_cases]
+    if isinstance(input, (list, tuple, set)):
+        return type(input)(replace_boolean_strings(v) for v in input)
+    elif isinstance(input, dict):
+        return {k: replace_boolean_strings(v) for k, v in input.items()}
+
+    return input
+
+
+def parse_test_case(test_cases: str):
+    """Parses test cases from a string to valid Python data types."""
+    test_cases = [tc.strip() for tc in ast.literal_eval(test_cases)]
     parsed_test_cases = []
 
+    input_pattern = re.compile(r'Input: (.+?)\nOutput', re.DOTALL)
+    output_pattern = re.compile(r'Output: (.+?)(?:\nExplanation|\Z)', re.DOTALL)
+
     for test_case in test_cases:
-        # First search for I/O test cases from the text
-        input_match = re.search(r'Input: (.+?)\nOutput', test_case)
-        output_match = re.search(r'Output: (.+?)\nExplanation', test_case) if re.search(r'Output: (.+?)\nExplanation',
-                                                                                        test_case) else re.search(
-            r'Output: (.*)', test_case)
+        input_match = input_pattern.search(test_case)
+        output_match = output_pattern.search(test_case)
 
         if input_match and output_match:
-            input = input_match.group(1)
-            output = output_match.group(1)
-            if output and input:
-                # Many inputs are just values no variable names.
-                if ' = ' in input:
-                    input = input.split(' = ')[1:]
+            raw_input, raw_output = input_match.group(1), output_match.group(1).replace('\n', '')
+            # Extracting input values
+            if ' = ' in raw_input:
+                raw_input = raw_input.split(' = ')[1:]
 
-                if ' = ' in output:
-                    output = re.sub(r'\b\w+\s*=\s*([^;]+)', r'\1', output)
+            if isinstance(raw_input, list) and len(raw_input) > 1:
+                parsed_inputs = [safe_literal_eval(inp.rsplit(',', 1)[0])[1] for inp in raw_input[:-1]]
+                parsed_inputs.append(safe_literal_eval(raw_input[-1])[1])
+            else:
+                parsed_inputs = safe_literal_eval(replace_boolean_strings(raw_input))[1]
 
-                if len(input) > 1:
-                    inputs = []
-                    for i in range(len(input) - 1):
-                        processed = input[i].rsplit(',', 1)[0]
-                        inputs.append(safe_literal_eval(processed.replace('null', 'None'))[1])
-                    inputs.append(safe_literal_eval(input[-1].replace('null', 'None'))[1])
+            # cleaning and evaluating output
+            if ' = ' in raw_output:
+                raw_output = re.sub(r'\b\w+\s*=\s*([^;]+)', r'\1', raw_output)
 
-                    # Creating dictionary and appending to result list
-                    output = output.replace('\n', '')
-                    if isinstance(output, str) and 'true' not in output.lower() and 'false' not in output.lower():
-                        parse_test_case = {'Input': inputs,
-                                           'Output': safe_literal_eval(output.replace('null', 'None'))[
-                                               1]}
-                    else:
-                        parse_test_case = {'Input': inputs, 'Output': output}
-                else:
-                    if isinstance(output, str) and 'true' not in output.lower() and 'false' not in output.lower():
-                        parse_test_case = {
-                            'Input': safe_literal_eval(input[0].replace('null', 'None'))[1],
-                            'Output': safe_literal_eval(output.replace('null', 'None'))[
-                                1]} if isinstance(input, list) else {
-                            'Input': safe_literal_eval(input.replace('null', 'None'))[1],
-                            'Output': safe_literal_eval(output.replace('null', 'None'))[1]}
-                    else:
-                        parse_test_case = {
-                            'Input': safe_literal_eval(input[0].replace('null', 'None'))[1],
-                            'Output': output} if isinstance(input, list) else {
-                            'Input': safe_literal_eval(input.replace('null', 'None'))[1],
-                            'Output': output}
-                    if isinstance(parse_test_case['Input'], list):
-                        inp = parse_test_case['Input']
-                        parse_test_case['Input'] = [inp]
-                parsed_test_cases.append(parse_test_case)
-    #print(parsed_test_cases)
+            parsed_output = safe_literal_eval(replace_boolean_strings(raw_output))[1]
+
+            parsed_test_cases.append({
+                'Input': parsed_inputs,
+                'Output': parsed_output
+            })
+
     return parsed_test_cases
-
