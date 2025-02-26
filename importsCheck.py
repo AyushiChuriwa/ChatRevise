@@ -1,7 +1,8 @@
 import subprocess
 import ast
+import sys
 
-model = "gpt-3.5-turbo"
+model = "o1-mini"
 
 
 def printToTerminalFile(*args, **kwargs):
@@ -30,29 +31,35 @@ def extract_modules_to_import(code):
     return list(modules_to_import)
 
 
+def is_standard_library(module_name):
+    """ Checks if a module is part of Python's standard library. """
+    return module_name in sys.builtin_module_names or module_name in sys.stdlib_module_names
+
+
 def install_imports(code, model_new):
     """ Installs any missing modules specified in the code. """
     if not code:
         return "No code provided. Please provide Python code with necessary imports.", False
-
     global model
-    if model != model_new:
-        model = model_new
+    model = model_new
 
     modules_to_import = extract_modules_to_import(code)
     if not modules_to_import:
         return "No modules to import.", True
-
+    # Exclude standard library modules from the list
+    third_party_modules = [module for module in modules_to_import if not is_standard_library(module)]
+    if not third_party_modules:
+        return "All required modules are either standard library or already installed.", True
     try:
         # fetch already installed modules
         installed_modules = set(line.split('==')[0] for line in subprocess.run(['pip', 'freeze'], stdout=subprocess.PIPE, text=True).stdout.splitlines())
         # Install required modules using pip
-        modules_to_install = list([module for module in modules_to_import if module not in installed_modules])
+        modules_to_install = list([module for module in third_party_modules if module not in installed_modules])
         if modules_to_install:
             printToTerminalFile("Installing missing modules:", modules_to_install)
             # to check pip version errors
-            subprocess.run(["python", "-m", "pip", "install", "--upgrade", "pip"])
-            subprocess.run(['pip', 'install'] + modules_to_install)
+            subprocess.run(["python", "-m", "pip", "install", "--upgrade", "pip"], check=True)
+            subprocess.run(['pip', 'install'] + modules_to_install, check=True)
             return "Installed new imports successfully!", True
         else:
             return "All required modules are already installed.", True
