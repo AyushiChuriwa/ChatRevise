@@ -4,6 +4,8 @@ from openai import OpenAI
 import itertools
 import constants
 import argparse
+
+import openLLM
 import testCaseParser
 import pandas as pd
 import traceback
@@ -13,7 +15,6 @@ import os as os_module
 import time as time_module
 from importsCheck import install_imports
 from func_timeout import func_timeout, FunctionTimedOut
-
 
 class SolutionAssistant:
     """Assists in generating, testing, and iterating code solutions using LLMs."""
@@ -40,7 +41,13 @@ class SolutionAssistant:
 
     def log_to_file(self, *args, **kwargs):
         """Logs messages to both the terminal and a file."""
-        file_name = f"ResponseLog_{self.model}.txt"
+        model = self.model.replace("/", "-")
+        directory = "Responses"
+        if not os_module.path.exists(directory):
+            os_module.makedirs(directory)
+        file_name = f"Responses/ResponseLog_{model[:20]}.txt"
+        #file_name = file_name.replace("/", "-")
+
         print(*args, **kwargs)
         with open(file_name, 'a', encoding="utf-8") as log_file:
             print(*args, **kwargs, file=log_file)
@@ -48,7 +55,12 @@ class SolutionAssistant:
     def save_results_to_csv(self):
         """Writes the question data to a CSV file."""
         self.log_to_file("Saving results to CSV...")
-        csv_file_name = f"ResponseList_{self.model}.csv"
+        model = self.model.replace("/", "-")
+        directory = "Responses"
+        if not os_module.path.exists(directory):
+            os_module.makedirs(directory)
+        csv_file_name = f"Responses/ResponseList_{model[:20]}.csv"
+        #csv_file_name = csv_file_name.replace("/", "-")
         df = pd.DataFrame(self.question_data)
         if os_module.path.exists(csv_file_name):
             df.to_csv(csv_file_name, header=False, mode='a')
@@ -90,12 +102,42 @@ class SolutionAssistant:
             self.log_to_file("Error in LLM response:", str(e))
             return None
 
+    def get_open_llm_response(self):
+        """Fetches a response from the LLM."""
+        try:
+            response_code, prompt_token_length, response_token_length = openLLM.get_llm_response(self.model, self.message)
+            self.question_data['Token Length Prompt'][0].append(prompt_token_length if prompt_token_length else 0)
+            self.question_data['Token Length Response'][0].append(response_token_length if response_token_length else 0)
+
+            self.log_to_file("LLM Model used:", self.model)
+            return response_code if response_code else None
+        except Exception as e:
+            traceback.print_exc()
+
+            self.log_to_file("Error in LLM response:", str(e))
+            return None
+
+
+    def remove_trailing_prints(self, code):
+        lines = code.strip().split("\n")
+        while lines and re.match(r'^\s*print\(', lines[-1]):
+            lines.pop()
+
+        return "\n".join(lines)
+
+
     def save_code(self, code, filename, version):
         """Saves the generated code to a file."""
         folder_name = str(filename).replace(" ", "").replace(":", "_").replace("?", "").replace("/", "_")
-        path = f"Solutions_{self.model}/{folder_name}"
+        model = self.model.replace("/","-")
+        directory = "Responses"
+        if not os_module.path.exists(directory):
+            os_module.makedirs(directory)
+        model = self.model.replace("/", "-")
+        path = f"Responses/Solutions_{model[:20]}/{folder_name}"
         os_module.makedirs(path, exist_ok=True)
         file_path = f"{path}/{folder_name}_Solution_{version}.py"
+        code = self.remove_trailing_prints(code) # removes unwanted prints from generated code
         try:
             with open(file_path, "w", encoding="utf-8") as file:
                 file.write(code)
@@ -116,8 +158,8 @@ class SolutionAssistant:
             self.log_to_file(feedback)
             return "Failed to compile!", feedback
         except Exception as e:
-            self.log_to_file("Failed to compile as an Exception occurred.", str(e))
-            return "Failed to compile!", str(e)
+            self.log_to_file("Failed to compile as an Exception occurred.", e)
+            return "Failed to compile!", e
 
     @staticmethod
     def fetch_function_name(code):
@@ -160,6 +202,10 @@ class SolutionAssistant:
                     expected_output = True
                 elif isinstance(returned_output, bool) and (expected_output == 'false' or expected_output == 'False'):
                     expected_output = False
+                if expected_output in [None, '', '\x00'] and returned_output in [None, '']: # solves inconsistency with "" None
+                    self.log_to_file("Test case passed!\n")
+                    output_list.append(returned_output)
+                    break
                 # Adding test cases to the question message
                 if returned_output != expected_output:
                     any_order = ["return the answer in any order", "return the solution in any order",
@@ -311,17 +357,19 @@ if __name__ == "__main__":
     parser.add_argument("model", help="The LLM model to query")
     parser.add_argument("-k", "--api_key", help="API Key")
     parser.add_argument("-d", "--data_by", help="Data is given by user or leetcode or mbpp")
+    parser.add_argument("-f", "--data_file", help="Path to data file")
+    parser.add_argument("-q", "--ques_num", type=int, help="Question number", default=0)
     parser.add_argument("-o", "--order", action="store_true", help="Test questions which return solutions in any order")
     args = parser.parse_args()
 
     if (args.data_by).lower() == 'user':
         #Ask for question description and test cases
         all_question_names = ["User Question"]
-        all_question_descriptions = [input("Please enter the question description: ")]
+        all_question_descriptions = args.data_file #[input("Please enter the question description: ")]
         all_test_cases = []
         while True:
-            test_input = input("Enter the test case Input: ")
-            test_output = input("Enter the test case Output: ")
+            test_input = args.data_file #input("Enter the test case Input: ")
+            test_output = args.data_file #input("Enter the test case Output: ")
             all_test_cases.append({'Input': testCaseParser.safe_literal_eval(test_input)[1],
                                    'Output': testCaseParser.safe_literal_eval(test_output)[1]})
             more_tests = input("Do you want to add another test case? (yes/no): ").strip().lower()
@@ -329,24 +377,24 @@ if __name__ == "__main__":
                 break
     elif (args.data_by).lower() == 'mbpp':
         #Ask for the path of the question file and start
-        questions_file = input("Please enter the path for the MBPP data file: ")
-        start = input("Please enter the starting question number: ")
+        questions_file = args.data_file #input("Please enter the path for the MBPP data file: ")
+        start = args.ques_num #input("Please enter the starting question number: ")
         all_question_names, all_question_descriptions, all_test_cases = fetch_mbpp_details(questions_file,
                                                                                                args.order, int(start))
     else:
         #Ask for the path of the question file and start
-        questions_file = input("Please enter the path for the LeetCode data file: ")
-        start = input("Please enter the starting question number: ")
+        questions_file = args.data_file #input("Please enter the path for the LeetCode data file: ")
+        start = args.ques_num #input("Please enter the starting question number: ")
         all_question_names, all_question_descriptions, all_test_cases = fetch_leetcode_details(questions_file,
                                                                                                args.order, int(start))
 
     start_time = time_module.time()
     # total_iterations can be modified. Should be at least one more than test cases number
     total_iterations = 11
+    closed_models = ['gpt-3.5-turbo','gpt-4o','gpt-4o-mini','o1-mini','o3-mini','gemini-1.5-flash']
 
     for i in range(0, len(all_question_names)):
         assistant = SolutionAssistant(args.model, args.api_key if args.api_key else None, args.order)
-
         ques_start_time = time_module.time()
         solution_found = False
         iteration_state = constants.GET_MODEL_RESPONSE
@@ -368,15 +416,16 @@ if __name__ == "__main__":
                 # Generate a solution and save it
                 conditional_sleep(assistant.model, 5)
                 assistant.log_to_file("\nAsking the model for a response Python solution for : ", question_name)
-                initial_message = constants.INITIAL_MESSAGE
+                initial_message = constants.INITIAL_MESSAGE if assistant.model in closed_models else constants.INITIAL_MESSAGE_OPEN
                 if assistant.model == "o1-mini":
                     assistant.message.append(
                         {"role": "user", "content": initial_message})  # as there is no system message for this model
                 else:
                     assistant.message.append({"role": "system", "content": initial_message})
-                assistant.message.append({"role": "user", "content": question_description})
-                assistant.question_data['Prompt List'][0].append(initial_message + " " + question_description)
-                response = assistant.get_llm_response()
+                updated_ques_desc = question_description if assistant.model in closed_models else constants.ADDITIONAL_MESSAGE_OPEN + question_description
+                assistant.message.append({"role": "user", "content": updated_ques_desc})
+                assistant.question_data['Prompt List'][0].append(initial_message + " " + updated_ques_desc)
+                response = assistant.get_llm_response() if assistant.model in closed_models else assistant.get_open_llm_response()
 
                 if not response:
                     max_tries += 1
@@ -387,7 +436,6 @@ if __name__ == "__main__":
                 else:
                     if "```python" in response:
                         response = assistant.extract_python_code(response)
-
                     assistant.log_to_file("LLM response python solution:\n", response)
                     assistant.message.append({"role": "assistant", "content": response})
                     assistant.log_to_file("Saving the solution")
@@ -412,7 +460,7 @@ if __name__ == "__main__":
                     code_output, feedback = assistant.compile_code(response)
                     if code_output == "Failed to compile!":
                         iteration_state = constants.UPDATE_QUESTION_DESCRIPTION
-                        feedback = feedback + constants.SYNTAX_ERROR
+                        feedback = str(feedback) + constants.COMPILE_ERROR
                         assistant.question_data['Error List'][0].append(code_output)
 
                     else:
@@ -447,7 +495,7 @@ if __name__ == "__main__":
                 assistant.log_to_file("Updated the prompt to include : ", feedback)
                 conditional_sleep(assistant.model, 15)
 
-                response = assistant.get_llm_response()
+                response = assistant.get_llm_response() if assistant.model in closed_models else assistant.get_open_llm_response()
                 assistant.log_to_file("Updated LLM response. Python solution:\n", response)
                 assistant.message.append({"role": "assistant", "content": response})
                 if response:

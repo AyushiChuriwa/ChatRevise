@@ -44,8 +44,9 @@ def parse_test_case(test_cases: str):
             raw_input, raw_output = input_match.group(1), output_match.group(1).replace('\n', '')
             # Extracting input values
             if ' = ' in raw_input:
-                raw_input = raw_input.split(' = ')[1:]
-
+                key, raw_input = raw_input.split(' = ', 1)
+                raw_input = raw_input.strip('"')
+                #raw_input = raw_input.split(' = ')[1:].strip('"')
             if isinstance(raw_input, list) and len(raw_input) > 1:
                 parsed_inputs = [safe_literal_eval(inp.rsplit(',', 1)[0])[1] for inp in raw_input[:-1]]
                 parsed_inputs.append(safe_literal_eval(raw_input[-1])[1])
@@ -55,9 +56,7 @@ def parse_test_case(test_cases: str):
             # cleaning and evaluating output
             if ' = ' in raw_output:
                 raw_output = re.sub(r'\b\w+\s*=\s*([^;]+)', r'\1', raw_output)
-
             parsed_output = safe_literal_eval(replace_boolean_strings(raw_output))[1]
-
             parsed_test_cases.append({
                 'Input': parsed_inputs,
                 'Output': parsed_output
