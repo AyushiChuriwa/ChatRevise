@@ -66,7 +66,7 @@ python LLMPrompt.py "gpt-3.5-turbo" -k "yourAPIKeyGoesHere" -d leetcode -f "leet
 ## Project Structure
 ### Folders
 - **`ImagesAndGraphs/`** – Contains generated graphs and visualizations.
-- **`Solutions/`** – Stores LLM-generated solutions categorized by question.
+- **`Responses/`** – Stores LLM-generated solutions categorized by question.
 
 ### Key Files
 - **`importsCheck.py`** – Installs missing dependencies found in LLM-generated code.
