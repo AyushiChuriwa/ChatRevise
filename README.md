@@ -6,6 +6,7 @@ A framework for automated code generation, testing, and repair using Large Langu
 It supports **LeetCode** and **MBPP** datasets and work with models, including:
 - OpenAI models: `gpt-3.5-turbo`, `gpt-4o-mini`, `gpt-4o`, `gpt-o1-mini`, `gpt-o3-mini`
 - **Gemini** models
+- LLama 3.2
 
 ## Getting Started
 ### Prerequisites
@@ -41,7 +42,7 @@ We also support the **MBPP dataset** in JSONL format.
 ### Running the LLM for Code Generation
 To generate responses using an LLM, run:
 ```bash
-python LLMPrompt.py <model> -k <apiKey> -d <dataSource> -o
+python LLMPrompt.py <model> -k <apiKey> -d <dataSource> -f <dataFilePath> -o
 ```
 #### Parameters:
 - `<model>` – One of the supported models listed above.
@@ -50,16 +51,17 @@ python LLMPrompt.py <model> -k <apiKey> -d <dataSource> -o
   - **`leetcode`** – Uses `LeetCode.xlsx` as input.
   - **`mbpp`** – Uses `mbpp.jsonl` dataset.
   - **`user`** – Prompts the user to manually enter a question and test cases in the terminal.
+- `-f` – Specify the data file path.
 - `-o` – Specifies if the order of the solution is relevant. If order does not matter, include `-o`.
 
 #### Example:
 ```bash
-python LLMPrompt.py "gpt-3.5-turbo" -k "yourAPIKeyGoesHere" -d leetcode -o
+python LLMPrompt.py "gpt-3.5-turbo" -k "yourAPIKeyGoesHere" -d leetcode -f "leetcodeFilePath" -o
 ```
 #### Outputs:
 - `ResponseList.csv` – Contains response analysis
 - `ResponseLog.txt` – Logs terminal output
-- `Solutions/` – Stores generated solutions, organized by question
+- `Responses/` – Stores generated solutions, organized by question
 
 ## Project Structure
 ### Folders
@@ -69,6 +71,7 @@ python LLMPrompt.py "gpt-3.5-turbo" -k "yourAPIKeyGoesHere" -d leetcode -o
 ### Key Files
 - **`importsCheck.py`** – Installs missing dependencies found in LLM-generated code.
 - **`testCaseParser.py`** – Converts test cases from strings to Python data types dynamically.
+- **`openLLm.py`** - Allows integration with open weights models
 - **`validation.py`** – Submits LLM-generated solutions to the LeetCode platform.
 - **`chartCreation.ipynb`** – Generates plots based on obtained solutions.
 - **`computeAcceptancerates.ipynb`** – Computes acceptance rates for interpreted and submitted solutions.
